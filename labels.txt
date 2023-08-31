@@ -1,0 +1,3 @@
+0 Anomaly Sound 
+1 Machine Stopped
+2 Normal Sound
