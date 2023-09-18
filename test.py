@@ -1,79 +1,142 @@
-import os
-import numpy as np
+
 import tkinter as tk
-import pyaudio
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
 import tensorflow as tf
-import tensorflow_io as tfio
-from matplotlib import pyplot as plt
+import sounddevice as sd
+import numpy as np
+import nexmo
+import serial
 
 
-model = tf.keras.models.load_model('audio_classification_model.h5')
+interpreter = tf.lite.Interpreter(model_path='soundclassifier_with_metadata.tflite')
+interpreter.allocate_tensors()
 
+#API keys
+API_KEY = '14d691e7'
+API_SECRET = 'lMSJb61Eergad5B9'
+client = nexmo.Sms(key=API_KEY, secret=API_SECRET)
 
-def preprocess_audio_chunk(audio_chunk):
-   
-    audio_chunk = audio_chunk.mean(axis=1) 
-    
-    
-    target_sample_rate = 16000
-    resampled_chunk = tfio.audio.resample(audio_chunk, rate_in=RATE, rate_out=target_sample_rate)
-    
-    
-    target_length = 48000  
-    if len(resampled_chunk) < target_length:
-        resampled_chunk = np.concatenate((resampled_chunk, np.zeros(target_length - len(resampled_chunk))))
-    else:
-        resampled_chunk = resampled_chunk[:target_length]
-    
-    spectrogram = tf.signal.stft(resampled_chunk, frame_length=320, frame_step=32)
-    spectrogram = tf.abs(spectrogram)
-    spectrogram = tf.expand_dims(spectrogram, axis=-1)
-    
-    return spectrogram
+arduino = serial.Serial('COM5', 9600) 
 
-# Function to update GUI
-def update_gui(predictions):
-    if predictions[0] > 0.5:
-        result_label.config(text="Predicted: Normal Sound")
-    else:
-        result_label.config(text="Predicted: Anomally Sound")
+# Send an SMS message
+def Message():
+    client.send_message({
+        'from': '+233246943076',
+        'to': '+233246943076',
+        'text': "Alert: Sound anomaly detected, Kindly Check your system for impending failures",
+    })
 
-# Real-time audio processing loop
-def audio_stream_callback(in_data, frame_count, time_info, status):
-    audio_chunk = np.frombuffer(in_data, dtype=np.float32).reshape(-1, 2)
-    preprocessed_chunk = preprocess_audio_chunk(audio_chunk)
-    predictions = model.predict(np.expand_dims(preprocessed_chunk, axis=0))
-    update_gui(predictions)
-    return (in_data, pyaudio.paContinue)
+# Load labels.txt
+with open('labels.txt', 'r') as labels_file:
+    labels = labels_file.read().splitlines()
 
-# Initialize PyAudio
-p = pyaudio.PyAudio()
-FORMAT = pyaudio.paFloat32
-CHANNELS = 2
-RATE = 44100
-CHUNK = 1024
-
-stream = p.open(format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK,
-                stream_callback=audio_stream_callback)
-
-# Tkinter GUI
+# Tkinter window
 root = tk.Tk()
-root.title("Real-Time Sound Classification")
+root.title("Sound Anomaly Detection")
 
-result_label = tk.Label(root, text="Predicted: ", font=("Helvetica", 16))
-result_label.pack(pady=20)
+# Create an axis for the wave plot
+fig, ax = plt.subplots(figsize=(10, 4))
+line, = ax.plot([], [], lw=2)
+ax.set_title("Real-time Waveform")
+ax.set_xlabel("Time (s)")
+ax.set_ylabel("Amplitude")
+ax.set_xlim(0, 2)
+ax.set_ylim(-0.4, 0.4)
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.get_tk_widget().pack()
 
-def close_window():
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
-    root.destroy()
+processing = False
 
-close_button = tk.Button(root, text="Close", command=close_window, font=("Helvetica", 12))
-close_button.pack()
+consecutive_loops = 0
+
+
+def process_audio():
+    global processing
+    global consecutive_loops
+    processing = True
+
+
+
+    duration = 2
+    samplerate = 11008
+    channels = 2
+
+    frames = int(duration * samplerate)
+    while processing:
+        audio_input = sd.rec(frames=frames, samplerate=samplerate, channels=channels)
+        sd.wait()
+
+        # Preprocess audio input
+        audio_input = audio_input.flatten()
+        input_data = np.array(audio_input, dtype=np.float32)
+
+        input_data = input_data.reshape(1, -1)
+
+        # Run on the model
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.invoke()
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+
+        # Get the highest prediction confidence
+        max_confidence = np.max(output_data)
+        # Map prediction to labels
+        predicted_label_index = np.argmax(output_data)
+        predicted_label = labels[predicted_label_index]
+
+        # Display the prediction if confidence is above 60%
+        if max_confidence >= 0.6:
+            prediction_label.config(text=f"Predicted Label: {predicted_label} (Confidence: {max_confidence:.2f})")
+        else:
+            prediction_label.config(text=f"Predicted Label: {labels[0]}")
+            # prediction_label.config(text=f"Predicted Label: Uncertain (Confidence: {max_confidence:.2f})")
+
+        root.update()
+
+        # Check loops and change color
+        if predicted_label == labels[0] or predicted_label == labels[1]:
+            consecutive_loops += 1
+            if consecutive_loops >= 4:
+                prediction_label.config(fg='red')
+                Message()
+                arduino.write(b"H")
+        else:
+            consecutive_loops = 0
+            if predicted_label == labels[2]:
+                prediction_label.config(fg='green')
+                arduino.write(b"L")
+            else:
+                prediction_label.config(fg='black')
+            
+
+        # Update plot
+        line.set_data(np.arange(len(audio_input)) / samplerate, audio_input)
+        ax.relim()
+        ax.autoscale_view()
+        canvas.draw()
+
+    prediction_label.config(text="Predicted Label: None", fg='black')
+    arduino.write(b'L')
+
+
+def stop_processing():
+    global processing
+    processing = False
+
+
+arduino.close()
+
+capture_button = tk.Button(root, text="Start Capturing", command=process_audio)
+capture_button.pack()
+
+stop_button = tk.Button(root, text="Stop Capturing", command=stop_processing)
+stop_button.pack()
+
+# Label to display predictions
+prediction_label = tk.Label(root, text="Predicted Label: None", font=("Roboto", 20))
+prediction_label.pack()
 
 root.mainloop()

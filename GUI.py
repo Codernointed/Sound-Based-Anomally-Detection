@@ -10,23 +10,23 @@ import serial
 interpreter = tf.lite.Interpreter(model_path='soundclassifier_with_metadata.tflite')
 interpreter.allocate_tensors()
 
-# Load labels from labels.txt
+
 with open('labels.txt', 'r') as labels_file:
     labels = labels_file.read().splitlines()
 
-# Create Tkinter window
+#Tkinter window
 root = tk.Tk()
-root.title("Sound Classification Visualization")
+root.title("Sound Anomally Detection")
 
 
-arduino = serial.Serial('COM5', 9600) 
+# arduino = serial.Serial('COM5', 9600) 
 
-# Create a matplotlib figure and axis for the wave plot
+
 fig, ax = plt.subplots(figsize=(10, 4))
 line, = ax.plot([], [], lw=2)
 ax.set_title("Real-time Waveform")
 ax.set_xlabel("Time (s)")
-ax.set_ylabel("Amplitude")
+ax.set_ylabel("Amplitude")  
 ax.set_xlim(0, 2)
 ax.set_ylim(-0.2, 0.2) 
 canvas = FigureCanvasTkAgg(fig, master=root)
@@ -55,10 +55,10 @@ def process_audio():
         audio_input = audio_input.flatten() 
         input_data = np.array(audio_input, dtype=np.float32)
         
-        # Reshape input data to match model's expected shape
+        
         input_data = input_data.reshape(1, -1)
         
-        # Run inference on the model
+        # Run on the model
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
         
@@ -74,31 +74,30 @@ def process_audio():
         prediction_label.config(text=f"Predicted Label: {predicted_label}")
         root.update()
         
-        # Check for consecutive loops and change color if needed
+        # Check loops and change color
         if predicted_label in ["0 Anomaly Sound", "1 Machine Stopped"]:
             consecutive_loops += 1
-            if consecutive_loops >= 4:
+            if consecutive_loops >= 2:
                 prediction_label.config(fg='red')
-                arduino.write(b"H")
+                # arduino.write(b"H")
         else:
             consecutive_loops = 0
             prediction_label.config(fg='black')
-            arduino.write(b"L")
+            # arduino.write(b"L")
         
         # if predicted_label in ["1 Background Noise"]:
         #     arduino.write(b"H")
         # else:
         #     arduino.write(b"L")
         
-        # Update the wave plot
+        # Update plot
         line.set_data(np.arange(len(audio_input)) / samplerate, audio_input)
         ax.relim() 
         ax.autoscale_view()
         canvas.draw()
     
     prediction_label.config(text="Predicted Label: None", fg='black')
-    # arduino.write(b'0')  # Turn off LED when processing stops
-
+    # arduino.write(b'L')  
 def stop_processing():
     global processing
     processing = False

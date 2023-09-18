@@ -1,0 +1,84 @@
+
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import sounddevice as sd
+import numpy as np
+import serial
+# Import necessary libraries: This section imports various Python libraries used in the code, including Tkinter for the GUI, Matplotlib for plotting, TensorFlow for machine learning, Sounddevice for audio processing, NumPy for numerical operations, and Serial for communication with a device (in this case, an Arduino).
+
+
+
+interpreter = tf.lite.Interpreter(model_path='soundclassifier_with_metadata.tflite')
+interpreter.allocate_tensors()
+# TensorFlow Model Initialization: Here, a TensorFlow Lite model is loaded using an interpreter. The model is expected to be in the file 'soundclassifier_with_metadata.tflite'. The interpreter is then allocated with necessary resources.
+
+
+
+# Load labels from labels.txt
+with open('labels.txt', 'r') as labels_file:
+    labels = labels_file.read().splitlines()
+# Load Labels: This code reads labels from a file called 'labels.txt' and stores them as a list of strings in the variable labels.
+
+
+root = tk.Tk()
+root.title("Sound Classification Visualization")
+# Create Tkinter Window: A Tkinter window is created with the title "Sound Classification Visualization."
+
+
+arduino = serial.Serial('COM5', 9600) 
+# Initialize Serial Communication: This line initializes serial communication with an Arduino device connected to the COM5 port with a baud rate of 9600.
+
+
+# Create a matplotlib figure and axis for the wave plot
+fig, ax = plt.subplots(figsize=(10, 4))
+line, = ax.plot([], [], lw=2)
+ax.set_title("Real-time Waveform")
+ax.set_xlabel(())"Time (s)")
+ax.set_ylabel("Amplitude")
+ax.set_xlim(0, 2)
+ax.set_ylim(-0.2, 0.2) 
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.get_tk_widget().pack()
+# Create Matplotlib Figure: This code creates a Matplotlib figure and axis for displaying a real-time waveform plot. The figure is added to the Tkinter window for display.
+
+
+processing = False
+consecutive_loops = 0
+# Initialize Processing Variables: processing is a boolean variable used to track whether audio processing is ongoing, and consecutive_loops is used to count consecutive loops with certain predictions.
+# This is the setup portion of the code. The following part is within functions that get triggered by buttons in the GUI:
+
+
+def process_audio():
+    global processing
+    global consecutive_loops
+    processing = True
+    # ...
+# process_audio Function: This function handles the audio processing. It records audio input, preprocesses it, runs inference on the loaded TensorFlow model, updates the GUI with predictions, and controls an Arduino device based on certain predictions.
+
+
+def stop_processing():
+    global processing
+    processing = False
+    # ...
+# stop_processing Function: This function is called when the "Stop Capturing" button is pressed. It stops audio processing by setting processing to False.
+
+
+capture_button = tk.Button(root, text="Start Capturing",command=process_audio)
+capture_button.pack()
+
+stop_button = tk.Button(root, text="Stop Capturing", command=stop_processing)
+stop_button.pack()
+# Create Buttons: Two buttons, "Start Capturing" and "Stop Capturing," are created in the Tkinter window. They trigger the process_audio and stop_processing functions when clicked.
+
+
+# Label to display predictions
+prediction_label = tk.Label(root, text="Predicted Label: None", font=("Roboto", 20))
+prediction_label.pack()
+
+root.mainloop()
+# Prediction Label: A label is added to the Tkinter window to display predicted labels. It initially displays "Predicted Label: None" and uses the "Roboto" font with a font size of 20.
+# Finally, the root.mainloop() call starts the Tkinter main loop, which keeps the GUI running and responsive to user interactions.
+
+# This code appears to create a real-time sound classification and anomaly detection application with a graphical user interface (GUI). It captures audio input, processes it using a machine learning model, displays predictions, and can control an Arduino device based on certain predictions.
